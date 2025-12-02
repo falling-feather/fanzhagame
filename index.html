@@ -3,12 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>国庆七天乐：反诈模拟器 (剧情加强版)</title>
+    <title>仿生人不会梦见电子羊</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div id="app">
+<!-- 资源加载页 -->
+<div id="loader">
+    <div class="loader-content">
+        <div class="spinner"></div>
+        <div class="loading-text">资源加载中... <span id="progress-text">0%</span></div>
+    </div>
+</div>
+
+<div id="app" class="hidden">
     <!-- 左侧：侧边栏 -->
     <div class="sidebar">
         <div class="my-profile">
@@ -16,7 +24,7 @@
             <div class="my-info">
                 <div class="my-name">玩家</div>
                 <div class="wallet" onclick="UI.toggleWallet()">
-                    余额: ¥<span id="wallet-amount">2000.00</span>
+                    余额: ¥<span id="wallet-amount">20000.00</span>
                 </div>
             </div>
             <button class="next-day-btn mobile-only" onclick="Game.endDay()">结束今天</button>
@@ -52,6 +60,7 @@
     </div>
 </div>
 
+<!-- 转场遮罩 -->
 <div id="transition-layer" class="hidden">
     <div class="trans-content">
         <h1 id="trans-title">Day 1</h1>
@@ -60,7 +69,7 @@
     </div>
 </div>
 
-<!-- ⚠️ 注意加载顺序：先Common定义DB，再加载各分卷内容，最后加载核心逻辑 -->
+<!-- 脚本加载顺序：先Common，再分卷，最后Core -->
 <script src="data/common.js"></script>
 <script src="data/scripts_group.js"></script>
 <script src="data/scripts_social.js"></script>

@@ -1,121 +1,231 @@
 const Game = {
     state: {
         day: 1,
-        balance: 2000.00,
+        balance: 20000.00,
         currentChatId: null,
         chatProgress: {},
         chatHistory: {},
-        flags: {} 
+        flags: {},
+        scammedCount: 0,
+        correctCount: 0
+    },
+    timer: null,
+
+    // === 1. 初始化与预加载 ===
+    start() {
+        this.preloadAssets(() => {
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            this.init();
+        });
     },
 
-    timer: null, 
+    preloadAssets(callback) {
+        const images = Object.values(ASSETS);
+        let loaded = 0;
+        if (images.length === 0) callback();
+        images.forEach(src => {
+            const img = new Image();
+            img.src = src;
+            img.onload = img.onerror = () => {
+                loaded++;
+                const pct = Math.floor((loaded / images.length) * 100);
+                document.getElementById('progress-text').innerText = pct + '%';
+                if (loaded === images.length) setTimeout(callback, 500);
+            };
+        });
+    },
 
     init() {
         document.getElementById('my-avatar').style.backgroundImage = `url(${ASSETS.me})`;
-        this.initDayProgress();
+        this.refreshDayScripts();
         this.renderList();
-        UI.showTransition(1, "国庆假期第一天");
+        UI.showTransition(1, "第一日：亲情绑架");
     },
 
-    initDayProgress() {
+    // === 2. 剧本指针管理 ===
+    refreshDayScripts() {
         Object.keys(DB.contacts).forEach(id => {
-            const contact = DB.contacts[id];
-            if (contact.day === this.state.day) {
-                // 如果是第一次初始化该对话，或者该对话还未存在
-                if (!this.state.chatProgress[id]) {
-                    this.state.chatProgress[id] = { nodeId: 'start', index: 0, finished: false };
+            // 构建当天的剧本 Key
+            // 例如：class_group 在 Day 4 会寻找 class_group_day4
+            let todayScriptKey = `${id}_day${this.state.day}`;
+            
+            // 特殊逻辑：大顺 Day 7 回归
+            if (id === 'uncle_dashun_return' && this.state.day === 7) {
+                todayScriptKey = 'uncle_dashun_return_day7';
+            }
+
+            const hasNewScript = !!DB.scripts[todayScriptKey];
+            let progress = this.state.chatProgress[id];
+
+            if (hasNewScript) {
+                // 只有当该联系人有新剧本时，才重置进度
+                // 如果是班级群，Day 2 没有脚本，就不会重置，保留 Day 1 的状态
+                if (!progress || progress.scriptKey !== todayScriptKey) {
+                    this.state.chatProgress[id] = {
+                        scriptKey: todayScriptKey,
+                        nodeId: 'start',
+                        index: 0,
+                        finished: false
+                    };
+                }
+            } else {
+                // 旧剧本没聊完，进行催促
+                if (progress && !progress.finished) {
+                   this.injectReminder(id);
                 }
             }
         });
+    },
+
+    injectReminder(id) {
+        const progress = this.state.chatProgress[id];
+        const script = DB.scripts[progress.scriptKey];
+        if (!script) return;
+        const node = script[progress.nodeId];
         
-        // 特殊：Day 7 大顺回归逻辑
-        if (this.state.day === 7 && this.state.flags.refused_dashun) {
-            this.state.chatProgress['uncle_dashun_return'] = { nodeId: 'start', index: 0, finished: false };
+        if (node && node.options) {
+            let reminderText = "（对方正在等待你的回复...）";
+            this.saveMsgToHistory({
+                type: 'system', text: reminderText, 
+                avatar: DB.contacts[id].avatar, senderName: DB.contacts[id].name
+            }, id);
         }
     },
 
+    // === 3. 跨天逻辑 ===
     endDay() {
-        if (this.state.day >= 7) return alert("游戏结束，最终余额：" + this.state.balance.toFixed(2));
+        if (this.state.day >= 7) return; 
+
+        this.fastForwardAllChats();
         this.state.day++;
         this.state.currentChatId = null;
-        this.initDayProgress();
+        
+        this.refreshDayScripts();
         UI.closeChat();
         UI.resetChatArea();
         this.renderList();
-        UI.showTransition(this.state.day, "新的一天");
+        
+        const titles = {
+            2: "第二日：深夜求助",
+            3: "第三日：快递理赔",
+            4: "第四日：完美恋人",
+            5: "第五日：克隆老板",
+            6: "第六日：AI换脸",
+            7: "第七日：反诈复盘"
+        };
+        UI.showTransition(this.state.day, titles[this.state.day] || "新的一天");
     },
 
+    fastForwardAllChats() {
+        Object.keys(this.state.chatProgress).forEach(id => {
+            const progress = this.state.chatProgress[id];
+            if (!progress || progress.finished) return;
+
+            const script = DB.scripts[progress.scriptKey];
+            if (!script) return;
+
+            // 如果当前进度的剧本是属于今天的，才快进。
+            // 避免快进未来日期的（理论上不会发生）或已经过期的
+            if (!progress.scriptKey.includes(`day${this.state.day}`)) return;
+
+            let loopGuard = 0;
+            while (!progress.finished && loopGuard < 50) {
+                const node = script[progress.nodeId];
+                if (!node) break;
+                if (node.options) break; // 停在选项处
+
+                if (node.sequence) {
+                    for (let i = progress.index; i < node.sequence.length; i++) {
+                        this.processAndSaveMsg(node.sequence[i], 'npc', id, false);
+                    }
+                } else if (node.text) {
+                    this.processAndSaveMsg({ text: node.text }, 'npc', id, false);
+                }
+
+                if (node.next) {
+                    progress.nodeId = node.next;
+                    progress.index = 0;
+                } else if (node.isEnd) {
+                    progress.finished = true;
+                } else {
+                    break;
+                }
+                loopGuard++;
+            }
+            progress.finished = true; // 强制结束当天未完成对话
+        });
+    },
+
+    // === 4. 渲染与交互 ===
     renderList() {
         const listEl = document.getElementById('contact-list');
         listEl.innerHTML = '';
         
-        // 1. 筛选当前可见的联系人
+        // 筛选可见联系人
         let activeContacts = Object.keys(DB.contacts).filter(id => {
             const c = DB.contacts[id];
-            // 天数判定
-            if (c.day > this.state.day) return false;
-            
-            // 大顺判定 (修复逻辑)
+
+            // 优化点：班级群始终显示 (只要当前天数 >= 它出现的初始天数)
+            if (id === 'class_group') return true;
+
+            // 大顺特殊判定
             if (id === 'uncle_dashun') {
-                // 必须 >= Day 5 且 余额 > 1000 才会出现
-                if (this.state.day < 5 || this.state.balance < 1000) return false;
-                // 如果已经拒绝过，且到了Day 7，旧的大顺入口隐藏，由 return 入口接管
+                if (this.state.day < 5) return false; 
                 if (this.state.day === 7 && this.state.flags.refused_dashun) return false;
             }
+            
+            // 基础判定：还没到该角色出场的时间
+            if (c.day > this.state.day) return false;
+            
             return true;
         });
 
-        // Day 7 插入大顺回归
+        // 大顺回归判定
         if (this.state.day === 7 && this.state.flags.refused_dashun) {
             activeContacts.push('uncle_dashun_return');
         }
 
-        // 2. 构造数据对象以便排序
+        // 构建渲染数据
         let renderData = activeContacts.map(id => {
-            // 处理特殊ID
             let contact = DB.contacts[id];
+            // 特殊处理回归版信息
             if (id === 'uncle_dashun_return') {
                 contact = { name: "大顺表哥", avatar: ASSETS.uncle, initMsg: "在吗？" };
             }
 
-            // 获取预览文本
             let previewText = contact.initMsg || "";
+            
+            // 如果有历史消息，显示最后一条
             if (this.state.chatHistory[id] && this.state.chatHistory[id].length > 0) {
                 const lastMsg = this.state.chatHistory[id][this.state.chatHistory[id].length - 1];
-                previewText = lastMsg.type === 'red_packet' ? "[红包]" : lastMsg.text;
+                if (lastMsg.type === 'red_packet') previewText = "[微信红包]";
+                else if (lastMsg.text && lastMsg.text.includes('[图片]')) previewText = "[图片]";
+                else previewText = lastMsg.text || "";
             }
 
             // 计算未读状态
             const progress = this.state.chatProgress[id];
-            const isUnread = progress && !progress.finished;
-            const badgeCount = isUnread ? (id === 'class_group' ? '99+' : '1') : 0;
-
-            return {
-                id,
-                contact,
-                previewText,
-                isUnread,
-                badgeCount
-            };
-        });
-
-        // 3. 排序逻辑：未读 > 已读 (置顶)
-        renderData.sort((a, b) => {
-            if (a.isUnread && !b.isUnread) return -1;
-            if (!a.isUnread && b.isUnread) return 1;
-            return 0; // 保持原有顺序 (或者可以按 ID/时间 排序)
-        });
-
-        // 4. 渲染 DOM
-        renderData.forEach(item => {
-            const { id, contact, previewText, isUnread, badgeCount } = item;
+            // 只有当存在进度对象，且未完成，且该进度的脚本属于 *今天* 时，才显示未读红点
+            // 这样避免了第二天班级群没有新脚本时却显示红点
+            const isTodayScript = progress && progress.scriptKey.endsWith(`day${this.state.day}`);
+            const isUnread = progress && !progress.finished && isTodayScript;
             
-            let badgeHtml = isUnread ? `<div class="badge">${badgeCount}</div>` : '';
+            return { id, contact, previewText, isUnread };
+        });
 
+        // 排序：未读 > 已读
+        renderData.sort((a, b) => (b.isUnread - a.isUnread));
+
+        // 渲染DOM
+        renderData.forEach(item => {
+            const { id, contact, previewText, isUnread } = item;
+            let badgeHtml = isUnread ? `<div class="badge">${id.includes('group') ? '...' : '1'}</div>` : '';
+            
             const el = document.createElement('div');
             el.className = 'chat-item';
             if (this.state.currentChatId === id) el.classList.add('active');
-            el.onclick = () => this.enterChat(id, el, contact.name); 
+            el.onclick = () => this.enterChat(id, el, contact.name);
             
             el.innerHTML = `
                 <div class="avatar" style="background-image: url('${contact.avatar}')">${badgeHtml}</div>
@@ -130,7 +240,7 @@ const Game = {
 
     enterChat(id, elInstance, nameOverride) {
         if(this.state.currentChatId === id) return;
-        this.stopScript(); 
+        this.stopScript();
 
         this.state.currentChatId = id;
         document.querySelectorAll('.chat-item').forEach(d => d.classList.remove('active'));
@@ -148,53 +258,43 @@ const Game = {
             this.state.chatHistory[id].forEach(msg => UI.renderMsgDirectly(msg));
         }
 
-        // 确定剧本ID
-        let scriptKey = `${id}_day${this.state.day}`;
-        if (id === 'uncle_dashun_return') scriptKey = 'uncle_dashun_return_day7';
-        
-        // 容错：如果该天没有特定剧本，尝试通用ID，或者不做任何事
-        if (!DB.scripts[scriptKey]) {
-            // 尝试查找通用剧本，例如 group_chat 可能会跨天复用 (此处暂不实现)
-            return;
-        }
-
+        // 继续剧情
         const progress = this.state.chatProgress[id];
-        if (progress && !progress.finished) {
-            this.runScriptLoop(scriptKey);
+        if (!progress || progress.finished) return; // 仅浏览历史
+        
+        // 只有当前正在进行的剧本才继续跑
+        if (progress.scriptKey.endsWith(`day${this.state.day}`)) {
+            this.runScriptLoop(progress.scriptKey);
         }
     },
 
+    // === 5. 脚本引擎 ===
     runScriptLoop(scriptKey) {
-        this.stopScript(); 
-
+        this.stopScript();
         const id = this.state.currentChatId;
         const progress = this.state.chatProgress[id];
+        if (!progress || progress.scriptKey !== scriptKey) return; 
+
         const script = DB.scripts[scriptKey];
-        
-        if (!script || !script[progress.nodeId]) return; 
-        
+        if (!script) return;
         const node = script[progress.nodeId];
+        if (!node) return;
 
         if (node.sequence) {
             if (progress.index < node.sequence.length) {
                 const msgData = node.sequence[progress.index];
-                this.processAndSaveMsg(msgData, 'npc');
+                this.processAndSaveMsg(msgData, 'npc', id, true);
                 
                 progress.index++;
-                // 动态延迟：字数越多读得越慢，但如果是刷屏则极快
-                let delay = Math.min(1500, Math.max(800, msgData.text ? msgData.text.length * 100 : 800));
-                if (id === 'class_group' && progress.nodeId.includes('spam')) delay = 150;
-
+                let delay = Math.min(2500, Math.max(1000, msgData.text ? msgData.text.length * 150 : 1000));
                 this.timer = setTimeout(() => this.runScriptLoop(scriptKey), delay);
             } else {
-                this.timer = setTimeout(() => this.finishNode(scriptKey, node), 500);
+                this.timer = setTimeout(() => this.finishNode(scriptKey, node), 800);
             }
-        } 
-        else if (node.text) {
-             this.processAndSaveMsg({ text: node.text }, 'npc');
+        } else if (node.text) {
+             this.processAndSaveMsg({ text: node.text }, 'npc', id, true);
              this.finishNode(scriptKey, node);
-        }
-        else if (node.options) {
+        } else if (node.options) {
             UI.renderOptions(node.options, scriptKey);
         }
     },
@@ -212,14 +312,7 @@ const Game = {
         } else if (node.isEnd) {
             progress.finished = true;
             if(node.action) this.handleAction(node.action);
-            this.renderList(); 
-        }
-    },
-
-    stopScript() {
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = null;
+            this.renderList();
         }
     },
 
@@ -227,24 +320,22 @@ const Game = {
         const id = this.state.currentChatId;
         const progress = this.state.chatProgress[id];
 
-        this.processAndSaveMsg({ text: opt.text }, 'me');
+        this.processAndSaveMsg({ text: opt.text }, 'me', id, true);
 
         if (opt.cost) this.state.balance -= opt.cost;
         if (opt.action) this.handleAction(opt.action);
         
         UI.updateWallet(this.state.balance.toFixed(2));
-        if (this.state.balance <= 0) alert("⚠️ 余额归零警告！");
 
         if (opt.next) {
             progress.nodeId = opt.next;
             progress.index = 0;
-            
             const nextNode = DB.scripts[scriptKey][opt.next];
             if (nextNode && nextNode.autoMe) {
                 setTimeout(() => {
-                    this.processAndSaveMsg({ text: nextNode.autoMe }, 'me');
+                    this.processAndSaveMsg({ text: nextNode.autoMe }, 'me', id, true);
                     setTimeout(() => this.runScriptLoop(scriptKey), 500);
-                }, 300);
+                }, 500);
             } else {
                 this.runScriptLoop(scriptKey);
             }
@@ -254,53 +345,64 @@ const Game = {
         }
     },
 
-    handleAction(action) {
-        if (action === 'flag_refuse_dashun') this.state.flags.refused_dashun = true;
-        // 红包逻辑
-        if (action === 'get_3') { this.state.balance += 3; UI.renderSystemMsg("支付宝到账 3.00 元"); }
-        if (action === 'grab_small') { this.state.balance += 0.12; UI.renderSystemMsg("抢到 0.12 元"); }
-        if (action === 'grab_big') { this.state.balance += 32.5; UI.renderSystemMsg("抢到 32.50 元"); }
-    },
-
-    processAndSaveMsg(msgData, source) {
-        const id = this.state.currentChatId;
-        // 兼容特殊回归ID
-        const contact = DB.contacts[id] || { avatar: ASSETS.uncle }; 
+    processAndSaveMsg(msgData, source, targetId, renderNow) {
+        const id = targetId || this.state.currentChatId;
+        const contact = DB.contacts[id] || { avatar: ASSETS.app }; 
         
         let msgObj = {
-            type: source === 'me' ? 'me' : 'other',
+            type: msgData.type || (source === 'me' ? 'me' : 'other'),
             text: msgData.text,
             avatar: source === 'me' ? ASSETS.me : contact.avatar,
-            senderName: null
+            senderName: null,
+            amount: msgData.amount // 红包金额
         };
 
-        if (msgData.type === 'red_packet') msgObj.type = 'red_packet';
-
-        // 修复：群聊头像匹配逻辑
         if (contact.type === 'group' && source !== 'me') {
-            // 优先检查 script 中的 sender 字段
-            let senderKey = msgData.sender;
-            // 如果 script 没写 sender，或者是单人聊天的 npc
-            if (!senderKey) senderKey = 'npc1';
-
+            let senderKey = msgData.sender || 'npc1';
             if (GROUP_MEMBERS[id] && GROUP_MEMBERS[id][senderKey]) {
                 msgObj.avatar = GROUP_MEMBERS[id][senderKey].avatar;
                 msgObj.senderName = GROUP_MEMBERS[id][senderKey].name;
-            } else {
-                // 如果找不到映射，使用默认头像
-                msgObj.avatar = ASSETS.group_icon;
             }
         }
-
-        this.saveMsgToHistory(msgObj);
-        UI.renderMsgDirectly(msgObj);
-        this.renderList(); 
+        this.saveMsgToHistory(msgObj, id);
+        if (renderNow && id === this.state.currentChatId) {
+            UI.renderMsgDirectly(msgObj);
+            this.renderList(); 
+        }
     },
 
-    saveMsgToHistory(msgObj) {
-        const id = this.state.currentChatId;
+    saveMsgToHistory(msgObj, id) {
         if (!this.state.chatHistory[id]) this.state.chatHistory[id] = [];
         this.state.chatHistory[id].push(msgObj);
+    },
+
+    handleAction(action) {
+        if (action === 'flag_refuse_dashun') this.state.flags.refused_dashun = true;
+        if (action === 'scammed') this.state.scammedCount++;
+        if (action === 'safe') this.state.correctCount++;
+        
+        if (action === 'check_score') {
+            const scammed = this.state.scammedCount;
+            let title = "", msg = "";
+            if (scammed >= 4) {
+                title = "【反诈意识亟待加强】";
+                msg = `7天内被骗 ${scammed} 次！\n建议重新体验，记住每个防骗要点。`;
+            } else if (scammed >= 1) {
+                title = "【具备基础防骗意识】";
+                msg = `7天内被骗 ${scammed} 次。\n细节决定成败，下次一定能识破！`;
+            } else {
+                title = "【反诈先锋】";
+                msg = "恭喜！7天 0 被骗！\n你拥有火眼金睛，请分享给朋友！";
+            }
+            setTimeout(() => alert(`${title}\n\n${msg}`), 500);
+        }
+    },
+
+    stopScript() {
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
     }
 };
 
@@ -330,8 +432,7 @@ const UI = {
     },
     renderMsgDirectly(msg) {
         if (msg.type === 'system') { this.renderSystemMsg(msg.text); return; }
-        if (msg.type === 'red_packet') { this.appendRedPacket(msg); return; }
-        this.appendMsg(msg.type, msg.text, msg.avatar, msg.senderName);
+        this.appendMsg(msg.type, msg.text, msg.avatar, msg.senderName, msg.amount);
     },
     renderSystemMsg(text) {
         const div = document.createElement('div');
@@ -340,26 +441,31 @@ const UI = {
         this.dom.msgContainer.appendChild(div);
         this.scrollToBottom();
     },
-    appendMsg(type, text, avatar, senderName) {
+    appendMsg(type, text, avatar, senderName, amount) {
         const div = document.createElement('div');
         div.className = `msg-row ${type}`;
+        
         let nameHTML = senderName ? `<div class="group-sender">${senderName}</div>` : '';
+        let contentHTML = '';
+
+        if (type === 'red_packet') {
+            // 红包特定 HTML 结构
+            contentHTML = `
+                <div class="bubble">
+                    <div class="rp-content">
+                        <div class="rp-icon"></div>
+                        <div class="rp-text">${text}</div>
+                    </div>
+                    <div class="rp-footer">微信红包</div>
+                </div>`;
+        } else {
+            // 普通文本
+            contentHTML = `<div class="bubble">${text}</div>`;
+        }
+
         div.innerHTML = `
             <div class="avatar" style="background-image: url('${avatar}')"></div>
-            <div class="msg-content">${nameHTML}<div class="bubble">${text}</div></div>
-        `;
-        this.dom.msgContainer.appendChild(div);
-        this.scrollToBottom();
-    },
-    appendRedPacket(msg) {
-        const div = document.createElement('div');
-        div.className = 'msg-row other';
-        let nameHTML = msg.senderName ? `<div class="group-sender">${msg.senderName}</div>` : '';
-        div.innerHTML = `
-            <div class="avatar" style="background-image: url('${msg.avatar}')"></div>
-            <div class="msg-content">${nameHTML}
-                <div class="red-packet"><div class="rp-icon"></div><div>${msg.text || '恭喜发财'}<br><small>查看红包</small></div></div>
-            </div>
+            <div class="msg-content">${nameHTML}${contentHTML}</div>
         `;
         this.dom.msgContainer.appendChild(div);
         this.scrollToBottom();
@@ -391,4 +497,4 @@ const UI = {
     hideTransition() { document.getElementById('transition-layer').classList.add('hidden'); }
 };
 
-window.onload = () => Game.init();
+window.onload = () => Game.start();
