@@ -40,7 +40,7 @@ const GROUP_MEMBERS = {
     "class_group": {
         "bierrari": { name: "Bierrari", avatar: ASSETS.bierrari },
         "yangshuai": { name: "杨帅", avatar: ASSETS.yangshuai },
-        "mumusan": { name: "木木三", avatar: ASSETS.mumusan },
+        "mumusan": { name: "地道杭州人 木木三", avatar: ASSETS.mumusan },
         "ben": { name: "早睡学长奔", avatar: ASSETS.ben },
         "x": { name: "追慕埃克斯", avatar: ASSETS.x },
         "l": { name: "L", avatar: ASSETS.l },

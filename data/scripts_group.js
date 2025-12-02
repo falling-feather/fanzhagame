@@ -18,7 +18,7 @@ DB.contacts["work_group"] = {
 
 // 班级群：定义一次，长期存在 (ID 统一为 class_group)
 DB.contacts["class_group"] = { 
-    name: "24软工一班小群(43)", 
+    name: "24软工一班学生小群(43)", 
     avatar: ASSETS.class_group, 
     type: "group", 
     day: 1, 
@@ -42,12 +42,12 @@ Object.assign(DB.scripts, {
         },
         "op_family": {
             options: [
-                { text: "舅妈别急，我立刻转2万！", cost: 20000, next: "fail_family" },
+                { text: "舅妈别急，我立马给你转钱！", cost: 1000, next: "fail_family" },
                 { text: "舅妈别慌，我先给小辉班主任打个电话问问。", next: "pass_family" }
             ]
         },
         "fail_family": {
-            autoMe: "已转账 20000 元。",
+            autoMe: "已转账 1000 元。",
             text: "（转账后，你打电话给表弟学校，得知他正在上晚自习。再回拨舅妈电话已关机，家族群显示“大舅妈”已退出群聊...）\n【系统提示】警惕利用亲情与紧急情况的诈骗！任何转账前必先核实。",
             action: "scammed",
             isEnd: true
@@ -119,7 +119,7 @@ Object.assign(DB.scripts, {
                 { sender: "l", text: "谢谢老板！" },
                 { sender: "fifteen_jin", text: "已收，好人一生平安" },
                 { sender: "mumusan", text: "我也发一个！祝大家玩得开心！" },
-                { sender: "mumusan", type: "red_packet", amount: 30, text: "杭州土著欢迎大家来玩" },
+                { sender: "mumusan", type: "red_packet", amount: 30, text: "周末来河北" },
                 { sender: "ben", text: "木哥大气！" }
             ],
             next: "op_redpacket2"
@@ -170,8 +170,8 @@ Object.assign(DB.scripts, {
     "class_group_day7": {
         "start": {
             sequence: [
-                { sender: "yangshuai", text: "@所有人 重要通知：明天（10月8日）正式上课！" },
-                { sender: "yangshuai", text: "课表按周四的上，早上8:00，D楼201，别走错了。" },
+                { sender: "bierrari", text: "@所有人 重要通知：明天（10月8日）正式上课！" },
+                { sender: "bierrari", text: "课表按周四的上，早上8:15，二教107，别走错了。" },
                 { sender: "bierrari", text: "收到！" },
                 { sender: "tong", text: "收到！" },
                 { sender: "x", text: "收到！" },

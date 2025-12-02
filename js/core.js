@@ -1,7 +1,7 @@
 const Game = {
     state: {
         day: 1,
-        balance: 20000.00,
+        balance: 1500.00,
         currentChatId: null,
         chatProgress: {},
         chatHistory: {},
@@ -40,7 +40,7 @@ const Game = {
         document.getElementById('my-avatar').style.backgroundImage = `url(${ASSETS.me})`;
         this.refreshDayScripts();
         this.renderList();
-        UI.showTransition(1, "第一日：亲情绑架");
+        UI.showTransition(1, "10.1日，国庆假期第一天");
     },
 
     // === 2. 剧本指针管理 ===
@@ -107,12 +107,12 @@ const Game = {
         this.renderList();
         
         const titles = {
-            2: "第二日：深夜求助",
-            3: "第三日：快递理赔",
-            4: "第四日：完美恋人",
-            5: "第五日：克隆老板",
-            6: "第六日：AI换脸",
-            7: "第七日：反诈复盘"
+            2: "10.2日，国庆假期第二天",
+            3: "10.3日，国庆假期第三天",
+            4: "10.4日，国庆假期第四天",
+            5: "10.5日，国庆假期第五天",
+            6: "10.6日，国庆假期第六天",
+            7: "10.7日，国庆假期第七天"
         };
         UI.showTransition(this.state.day, titles[this.state.day] || "新的一天");
     },
